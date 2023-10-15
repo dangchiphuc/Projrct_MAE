@@ -73,6 +73,10 @@ void Error_Handler(void);
 #define M2_B_Pin GPIO_PIN_7
 #define M2_B_GPIO_Port GPIOA
 #define M2_B_EXTI_IRQn EXTI9_5_IRQn
+#define DIO0_Pin GPIO_PIN_6
+#define DIO0_GPIO_Port GPIOB
+#define CS_Pin GPIO_PIN_7
+#define CS_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
