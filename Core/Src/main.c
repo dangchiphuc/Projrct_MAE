@@ -92,7 +92,7 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 
 uint8_t rx_buffer[20], rx_data, rx_index ;
-uint8_t prevState_1 =0, prevState_2 = 0  ;
+uint8_t prevState_1 =0, prevState_2 = 0, state_line  ;
 uint16_t pwm1 ,pwm2 , tim4_tick, DesiredPos, DesiredSpeed ;
 uint16_t cnt_vel_1=0 , cnt_vel_2=0 ;
 int16_t cnt_pos_1 = 0, cnt_pos_2 = 0, round_1 =0, round_2 = 0;
@@ -409,6 +409,43 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     		  cnt_pos_2 =0;
     	  }
       }
+
+    /*
+     * Handle interupt for 5 digtal signal from module line tracking
+     * Read each pin and save value to 1 byte uin8_t
+     * convert state byte to direction of model to pid control 2 wheels.
+     *   */
+    if(GPIO_Pin == L_1_Pin){
+    	uint8_t state;
+    	state = HAL_GPIO_ReadPin(L_1_GPIO_Port, L_1_Pin);
+    	state_line = (state & 1)?(state_line | (1<<0U)):(state_line ^ (1<<0U));
+    }
+
+    if(GPIO_Pin == L_2_Pin){
+    	uint8_t state;
+    	state = HAL_GPIO_ReadPin(L_2_GPIO_Port, L_2_Pin);
+    	state_line = (state & 1)?(state_line | (1<<1U)):(state_line ^ (1<<1U));
+    }
+
+    if(GPIO_Pin == L_3_Pin){
+    	uint8_t state;
+    	state = HAL_GPIO_ReadPin(L_3_GPIO_Port, L_3_Pin);
+    	state_line = (state & 1)?(state_line | (1<<2U)):(state_line ^ (1<<2U));
+    }
+
+    if(GPIO_Pin == L_4_Pin){
+    	uint8_t state;
+    	state = HAL_GPIO_ReadPin(L_4_GPIO_Port, L_4_Pin);
+    	state_line = (state & 1)?(state_line | (1<<3U)):(state_line ^ (1<<3U));
+    }
+
+    if(GPIO_Pin == L_5_Pin){
+    	uint8_t state;
+    	state = HAL_GPIO_ReadPin(L_5_GPIO_Port, L_5_Pin);
+    	state_line = (state & 1)?(state_line | (1<<4U)):(state_line ^ (1<<4U));
+
+
+    }
 }
 
 /**
@@ -879,7 +916,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(NSS_GPIO_Port, NSS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : LED_Pin */
   GPIO_InitStruct.Pin = LED_Pin;
@@ -894,30 +931,30 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB12 PB13 PB14 PB15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  /*Configure GPIO pins : L_2_Pin L_3_Pin L_4_Pin L_5_Pin */
+  GPIO_InitStruct.Pin = L_2_Pin|L_3_Pin|L_4_Pin|L_5_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  /*Configure GPIO pin : L_1_Pin */
+  GPIO_InitStruct.Pin = L_1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(L_1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : NSS_Pin */
+  GPIO_InitStruct.Pin = NSS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(NSS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : DIO0_Pin */
   GPIO_InitStruct.Pin = DIO0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(DIO0_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : CS_Pin */
-  GPIO_InitStruct.Pin = CS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(CS_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
@@ -925,6 +962,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
