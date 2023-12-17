@@ -21,10 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "stdio.h"
 #include "string.h"
+#include "stdio.h"
 #include "stdlib.h"
 #include "stdbool.h"
+#include "LoRa.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,17 +64,21 @@ typedef struct motor
 	float RPM			;
 }motor;
 
+/*Lora init*/
+LoRa my_lora;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define pi 			3.14
-#define rad_round	2*pi
-#define	rad_pulse 	pi/748
-#define r_Wheel		0.0325
-#define sample_time	0.005
-
+#define pi 				3.14
+#define rad_round		2*pi
+#define	rad_pulse 		pi/748
+#define r_Wheel			0.0325
+#define sample_time		0.005
+#define cl_Wise			1
+#define cntr_cl_Wise	0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -88,18 +94,20 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
-uint8_t rx_buffer[20], rx_data, rx_index ;
+uint8_t *rx_buff, rx_index = 0, cnt =1;
+uint8_t rx_buffer[20], rx_data, rx_indx ;
 uint8_t prevState_1 =0, prevState_2 = 0, state_line  ;
-uint16_t pwm1 ,pwm2 , tim4_tick, DesiredPos, DesiredSpeed ;
+uint16_t pwm1 ,pwm2 , tim4_tick =0, DesiredPos, DesiredSpeed ;
 uint16_t cnt_vel_1=0 , cnt_vel_2=0 ;
-int16_t cnt_pos_1 = 0, cnt_pos_2 = 0, round_1 =0, round_2 = 0;
+int32_t cnt_pos_1 = 0, cnt_pos_2 = 0, round_1 =0, round_2 = 0;
 //float current_Pos1=0, current_Pos2=0, vel_Rad1 =0 , vel_Rad2 =0;
 bool run = false, flag = false;
 motor motor_1;
 motor motor_2;
+pid pid_1,pid_2;
 
 /* USER CODE END PV */
 
@@ -111,6 +119,7 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 #ifdef __GNUC__
@@ -122,7 +131,7 @@ static void MX_SPI1_Init(void);
 
 PUTCHAR_PROTOTYPE
 	{
-		HAL_UART_Transmit(&huart1, (uint8_t*)&ch,1,100);
+		HAL_UART_Transmit(&huart2, (uint8_t*)&ch,1,100);
 		return ch;
 	}
 
@@ -131,9 +140,25 @@ PUTCHAR_PROTOTYPE
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+//int _write(int file, char *ptr, int len)
+//{
+//  /* Implement your write code here, this is used by puts and printf for example */
+//  int i=0;
+//  for(i=0 ; i<len ; i++)
+//    ITM_SendChar((*ptr++));
+//  return len;
+//}
+//
+uint8_t count =0;
+
+
+
 ///-------------PROTOTYPE--------------------///
+
+void handle_rx_data(uint8_t* receive_data, uint8_t count);
 uint16_t pid_velo(float setpoint, float current, pid pid);
 uint16_t pid_pos(float setpoint, float current,  pid pid);
+uint16_t pid_line(float setpoint, float current, pid pid);
 void setRoute(uint8_t state);
 void clockWise(motor motor);
 void cnterClockwise(motor motor);
@@ -143,9 +168,9 @@ void cnterClockwise(motor motor);
  * */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 	uint8_t i;
-				if(huart->Instance == USART1) //uart1
+				if(huart->Instance == USART2) //uart1
 				{
-						if(rx_index==0) {for (i=0;i<20;i++) rx_buffer[i] = 0;}
+						if(rx_indx==0) {for (i=0;i<20;i++) rx_buffer[i] = 0;}
 
 				switch(rx_data) {
 		            /* dung dong co */
@@ -169,13 +194,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		            case 's':
 		                DesiredPos = atoi((const char *)rx_buffer);
 		                memset(&rx_buffer, 0, sizeof(rx_buffer));
-		                rx_index = 0;
+		                rx_indx = 0;
 		                break;
 		            case 'v':
 		                DesiredSpeed = atoi((const char *)rx_buffer);
 		                //DesiredVel = DesiredSpeed * (pi/30);
 		                memset(&rx_buffer, 0, sizeof(rx_buffer));
-		                rx_index = 0;
+		                rx_indx = 0;
 		                break;
 
 //		            case 'p':
@@ -207,7 +232,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		            case '9':
 		            case '.':
 		            case '-':
-		                rx_buffer[rx_index++] |= rx_data;
+		                rx_buffer[rx_indx++] |= rx_data;
 		                break;
 		            default:
 		                break;
@@ -217,6 +242,64 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 	}
 
 
+void handle_rx_data(uint8_t* receive_data, uint8_t count){
+
+	if(!count)
+		return;
+
+	rx_buff = (uint8_t*)malloc(cnt*sizeof(uint8_t));
+	for(int i =0 ; i< count; i++){
+
+		switch(receive_data[i]){
+
+		case (uint8_t)'r':
+			////
+			break;
+
+		case (uint8_t)'s':
+			////
+			break;
+
+		case (uint8_t)'v':
+			////
+			DesiredSpeed = atoi((const char*)rx_buff);
+			memset(rx_buff,0,sizeof(*rx_buff));
+			rx_index = 0;
+			cnt =1;
+			break;
+
+		case (uint8_t)'p':
+			DesiredPos = atoi((const char*)rx_buff);
+			memset(rx_buff,0,sizeof(*rx_buff));
+			rx_index =0;
+			cnt =1;
+			break;
+
+		case '0':
+		case '1':
+		case '2':
+		case '3':
+		case '4':
+		case '5':
+		case '6':
+		case '7':
+		case '8':
+		case '9':
+			cnt ++;
+			rx_buff = (uint8_t*)realloc(rx_buff,cnt*sizeof(uint8_t));
+			rx_buff[rx_index++] = receive_data[i];
+			break;
+		default:
+			break;
+		}
+
+	}
+
+	if(rx_buff != NULL)
+		{free(rx_buff);}
+
+}
+
 	/*--------------xu li ngat ngoai---------------*/
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
@@ -225,6 +308,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   /* NOTE: This function Should not be modified, when the callback is needed,
            the HAL_GPIO_EXTI_Callback could be implemented in the user file
    */
+
+  /*DIO0 interupt detect data transmit or reveived */
+  if(GPIO_Pin == DIO0_Pin){
+
+	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+
+  }
+
   /*
    * Using external interrupt pins to calculate feedback from encoder of motor
    * EXTI in rising and falling mode --- 4 counts for 1 pulse
@@ -243,25 +334,25 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			  cnt_pos_1 ++;
 		  else
 			  cnt_pos_1 --;
-		  break;
+	  break;
 	  case 1:
 	  		  if(prevState_1 == 3)
 	  			  cnt_pos_1 ++;
 	  		  else
 	  			  cnt_pos_1 --;
-	  		break;
+	  break;
 	  case 2:
 	  		  if(prevState_1 == 0)
 	  			  cnt_pos_1 ++;
 	  		  else
 	  			  cnt_pos_1 --;
-	  		break;
+	  break;
 	  case 3:
 	  		  if(prevState_1 == 2)
 	  			  cnt_pos_1 ++;
 	  		  else
 	  			  cnt_pos_1 --;
-	  		break;
+	  break;
 	  }
 	  cnt_vel_1 ++;
 	  prevState_1 = state;
@@ -288,25 +379,25 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   			  cnt_pos_1 ++;
   		  else
   			  cnt_pos_1 --;
-  		  break;
+  	  break;
   	  case 1:
-  	  		  if(prevState_1 == 3)
-  	  			  cnt_pos_1 ++;
-  	  		  else
-  	  			  cnt_pos_1 --;
-  	  		break;
+		  if(prevState_1 == 3)
+			  cnt_pos_1 ++;
+		  else
+			  cnt_pos_1 --;
+  	  break;
   	  case 2:
-  	  		  if(prevState_1 == 0)
-  	  			  cnt_pos_1 ++;
-  	  		  else
-  	  			  cnt_pos_1 --;
-  	  		break;
+		  if(prevState_1 == 0)
+			  cnt_pos_1 ++;
+		  else
+			  cnt_pos_1 --;
+  	  break;
   	  case 3:
-  	  		  if(prevState_1 == 2)
-  	  			  cnt_pos_1 ++;
-  	  		  else
-  	  			  cnt_pos_1 --;
-  	  		break;
+		  if(prevState_1 == 2)
+			  cnt_pos_1 ++;
+		  else
+			  cnt_pos_1 --;
+  	  break;
   	  }
   	  cnt_vel_1 ++;
   	  prevState_1 = state;
@@ -333,25 +424,25 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   			  cnt_pos_2 ++;
   		  else
   			  cnt_pos_2 --;
-  		  break;
+  	  break;
   	  case 1:
   	  		  if(prevState_2 == 3)
   	  			  cnt_pos_2 ++;
   	  		  else
   	  			  cnt_pos_2 --;
-  	  		break;
+  	  break;
   	  case 2:
   	  		  if(prevState_2 == 0)
   	  			  cnt_pos_2 ++;
   	  		  else
   	  			  cnt_pos_2 --;
-  	  		break;
+  	  break;
   	  case 3:
   	  		  if(prevState_2 == 2)
   	  			  cnt_pos_2 ++;
   	  		  else
   	  			  cnt_pos_2 --;
-  	  		break;
+  	  break;
   	  }
   	  cnt_vel_2 ++;
   	  prevState_2 = state;
@@ -378,25 +469,25 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     			  cnt_pos_2 ++;
     		  else
     			  cnt_pos_2 --;
-    		  break;
+    	  break;
     	  case 1:
     	  		  if(prevState_2 == 3)
     	  			  cnt_pos_2 ++;
     	  		  else
     	  			  cnt_pos_2 --;
-    	  		break;
+    	  break;
     	  case 2:
     	  		  if(prevState_2 == 0)
     	  			  cnt_pos_2 ++;
     	  		  else
     	  			  cnt_pos_2 --;
-    	  		break;
+    	  break;
     	  case 3:
     	  		  if(prevState_2 == 2)
     	  			  cnt_pos_2 ++;
     	  		  else
     	  			  cnt_pos_2 --;
-    	  		break;
+    	  break;
     	  }
     	  cnt_vel_2 ++;
     	  prevState_2 = state;
@@ -469,21 +560,30 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		cnt_vel_2			= 0;
 		motor_2.current_Vel	= motor_2.RPM * (pi/30); 	 /// v (rad/s)
 
-		//if(run == true){
-			__HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_2, 600);
-			__HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_3, 600);
+		pwm1 = pid_velo(DesiredSpeed, motor_1.RPM, pid_1);
 
-		//}
+		if(run == true){
+			__HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_2,DesiredSpeed);
+			//__HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_3, 480);
+
+		}
+		if(run == false){
+			__HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_2,0 );
+		}
 
 	}
 	if(htim->Instance == TIM4){
-
-//		tim4_tick ++;
-//		if(tim4_tick == 6){
-//			printf("V%f\r\n", motor_1.RPM);
+		if(run == true){
+		tim4_tick ++;
+		if(tim4_tick == 16){
+			printf("V%d\r\n", (int)motor_1.RPM);
+			tim4_tick = 0;
+		}
+//		if(tim4_tick == 8){
+//			printf("P%f\r\n", motor_1.current_Pos);
 //			tim4_tick = 0;
 //		}
-
+		}
 
 	}
 
@@ -561,17 +661,39 @@ uint16_t pid_pos(float setpoint, float current,  pid pid){
 		pid.dir = 0;
 
 	/*Store previous value for next pid calculate*/
-	ui_prev = ui			;
-	err_prev = err			;
-	ud_ftr_prev = ud_filter	;
+	ui_prev = ui					;
+	err_prev = err					;
+	ud_ftr_prev = ud_filter			;
+	err_sat = pid_sat - pid_term	;
 	/*-------------------------------------------*/
 
-	pwm = abs(pid_sat)		;
+	pwm = abs((int)pid_sat)			;
 	return pwm;
 
 }
 
+void clockWise(motor motor){
 
+}
+
+uint16_t pid_line(float setpoint, float current, pid pid){
+
+	static float ui_prev =0, err_prev = 0;
+	float err,up,ui,ud,pid_term;
+	uint16_t pwm;
+	int16_t HILIM = 200, LOLIM = -200;
+	err = setpoint - current;
+	up = pid.kp*err;
+	ui = ui_prev + pid.ki*err*sample_time;
+	ud = pid.kd*(err - err_prev)/sample_time;
+	pid_term = up + ui + ud;
+	if(pid_term > HILIM)
+		pid_term = HILIM			;
+	if(pid_term < LOLIM)
+		pid_term = LOLIM			;
+	pwm = (uint16_t)abs(pid_term)	;
+	return pwm;
+}
 /* USER CODE END 0 */
 
 /**
@@ -581,7 +703,6 @@ uint16_t pid_pos(float setpoint, float current,  pid pid){
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -607,6 +728,7 @@ int main(void)
   MX_TIM4_Init();
   MX_USART1_UART_Init();
   MX_SPI1_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /// ham khoi tao 2 kenh pwm cho 2 dong co
@@ -619,7 +741,7 @@ int main(void)
   __HAL_TIM_SET_COMPARE(&htim2,TIM_CHANNEL_3,0);
 
   /// ngat uart_rx
-  HAL_UART_Receive_IT(&huart1, &rx_data,1);
+  HAL_UART_Receive_IT(&huart2, &rx_data,1);
 
   /// init value of 2 motors
   motor_1.current_Pos = 0;
@@ -637,9 +759,21 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  switch(state_line){
+
+	  	  case 0x1B:
+	  		  run = true;
+	  		  break;
+	  	  case 0x1F:
+	  		  run = false;
+	  		  break;
+
+
+	  }
 
 	  HAL_GPIO_TogglePin(GPIOC,LED_Pin );
-	  HAL_Delay(100);
+
+	  HAL_Delay(500);
   }
   /* USER CODE END 3 */
 }
@@ -839,7 +973,7 @@ static void MX_TIM4_Init(void)
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 24-1;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 1000-1;
+  htim4.Init.Period = 10000-1;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -897,6 +1031,39 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -913,17 +1080,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, LED_Pin|GPIO_PIN_14|DIR_2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(NSS_GPIO_Port, NSS_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : LED_Pin */
-  GPIO_InitStruct.Pin = LED_Pin;
+  /*Configure GPIO pins : LED_Pin PC14 DIR_2_Pin */
+  GPIO_InitStruct.Pin = LED_Pin|GPIO_PIN_14|DIR_2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : M1_A_Pin M1_B_Pin M2_A_Pin M2_B_Pin */
   GPIO_InitStruct.Pin = M1_A_Pin|M1_B_Pin|M2_A_Pin|M2_B_Pin;
@@ -943,6 +1113,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(L_1_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : RST_Pin */
+  GPIO_InitStruct.Pin = RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(RST_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : NSS_Pin */
   GPIO_InitStruct.Pin = NSS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -952,7 +1129,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : DIO0_Pin */
   GPIO_InitStruct.Pin = DIO0_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(DIO0_GPIO_Port, &GPIO_InitStruct);
 
